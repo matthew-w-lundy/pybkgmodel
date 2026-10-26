@@ -670,14 +670,24 @@ class DL3EventFile(EventFile):
 
                 evt_time = evt_data['TIME'].quantity + ref_epoch
                 event_data['mjd'] = evt_time.utc.mjd * u.d
+                if 'GEOLON' in evt_head and 'GEOLAT' in evt_head and 'ALTITUDE' in evt_head:
+                    obs_loc  = EarthLocation(lat=evt_head['GEOLAT'] * u.deg,
+                                             lon=evt_head['GEOLON'] * u.deg,
+                                             height=evt_head['ALTITUDE'] * u.m)
+                else:
+                    #Default observatory location (La Palma) if header keywords are missing
+                    obs_loc  = EarthLocation(lat=28.761758*u.deg,
+                                             lon=-17.890659*u.deg,
+                                             height=2200*u.m)
 
-                # TODO: current observatory location only La Palma, no mandatory header keyword
-                obs_loc  = EarthLocation(lat=28.761758*u.deg,
-                                         lon=-17.890659*u.deg,
-                                         height=2200*u.m)
+                if 'OBS_MODE' in evt_head:
+                    obs_mode_label= 'OBS_MODE'
+                elif 'OBSMODE' in evt_head:
+                    obs_mode_label= 'OBSMODE'
+                else:
+                    raise KeyError("Observation mode keyword not found in header") 
 
-                if evt_head['OBS_MODE'] in ('POINTING', 'WOBBLE'):
-
+                if evt_head[obs_mode_label].upper() in ('POINTING', 'WOBBLE'):
                     alt_az_frame = AltAz(obstime=evt_time,
                                          location=obs_loc)
 
@@ -696,7 +706,7 @@ class DL3EventFile(EventFile):
                     event_data['pointing_dec'] = np.array([evt_head['DEC_PNT']]
                                                           * len(event_data['pointing_zd'])) * u.deg
 
-                elif evt_head['OBS_MODE'] == 'DRIFT':
+                elif evt_head[obs_mode_label].upper() == 'DRIFT':
 
                     coords = SkyCoord(
                         alt = evt_head['ALT_PNT'] *u.deg \
@@ -716,13 +726,11 @@ class DL3EventFile(EventFile):
                     event_data['pointing_dec'] = radec_pointing.dec
 
                 else:
-                    raise TypeError(f"Observation mode {evt_head['OBS_MODE']} currently not \
+                    raise TypeError(f"Observation mode {evt_head[obs_mode_label].upper()} currently not \
                                     supported. Supported modes: POINTING, DRIFT")
-
             except KeyError:
                 print(f"File {file_name} corrupted or missing the Events hdu." +
                       "Empty arrays will be returned.")
-
         finite = [np.isfinite(item) for key, item  in event_data.items() if item is not None]
         all_finite = np.prod(finite, axis=0, dtype=bool)
 
